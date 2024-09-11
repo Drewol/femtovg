@@ -141,9 +141,11 @@ pub struct PathCache {
 }
 
 impl PathCache {
-    pub fn new(verbs: impl Iterator<Item = Verb>, transform: &Transform2D, tess_tol: f32, dist_tol: f32) -> Self {
-        let mut cache = Self::default();
-
+    pub fn update(&mut self, verbs: impl Iterator<Item = Verb>, transform: &Transform2D, tess_tol: f32, dist_tol: f32) {
+        let cache = self;
+        cache.bounds.reset();
+        cache.contours.clear();
+        cache.points.clear();
         // Convert path verbs to a set of contours
         for verb in verbs {
             match verb {
@@ -262,8 +264,6 @@ impl PathCache {
 
             true
         });
-
-        cache
     }
 
     fn add_contour(&mut self) {
@@ -1108,11 +1108,11 @@ mod tests {
         path.close();
 
         let transform = Transform2D::identity();
+        let mut cache = PathCache::default();
+        cache.update(path.verbs(), &transform, 0.25, 0.01);
+        cache.expand_fill(1.0, LineJoin::Miter, 10.0);
 
-        let mut path_cache = PathCache::new(path.verbs(), &transform, 0.25, 0.01);
-        path_cache.expand_fill(1.0, LineJoin::Miter, 10.0);
-
-        assert_eq!(path_cache.contours[0].convexity, Convexity::Concave);
+        assert_eq!(cache.contours[0].convexity, Convexity::Concave);
     }
 }
 

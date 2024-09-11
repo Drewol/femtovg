@@ -100,7 +100,7 @@ pub struct Path {
     last_pos: Position,
     dist_tol: f32,
     #[cfg_attr(feature = "serde", serde(skip))]
-    pub(crate) cache: RefCell<Option<(u64, PathCache)>>,
+    pub(crate) cache: RefCell<(u64, PathCache)>,
 }
 
 impl Path {
@@ -140,18 +140,15 @@ impl Path {
         let key = transform.cache_key();
 
         // this shouldn't need a bool once non lexic lifetimes are stable
-        let mut needs_rebuild = true;
-
-        if let Some((transform_cache_key, _cache)) = &*self.cache.borrow() {
-            needs_rebuild = key != *transform_cache_key;
-        }
+        let needs_rebuild = self.cache.borrow().0 != key;
 
         if needs_rebuild {
-            let path_cache = PathCache::new(self.verbs(), transform, tess_tol, dist_tol);
-            *self.cache.borrow_mut() = Some((key, path_cache));
+            let mut cache = self.cache.borrow_mut();
+            cache.1.update(self.verbs(), transform, tess_tol, dist_tol);
+            cache.0 = key;
         }
 
-        RefMut::map(self.cache.borrow_mut(), |cache| &mut cache.as_mut().unwrap().1)
+        RefMut::map(self.cache.borrow_mut(), |cache| &mut cache.1)
     }
 
     // Path funcs
