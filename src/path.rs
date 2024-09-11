@@ -147,11 +147,15 @@ impl Path {
         }
 
         if needs_rebuild {
-            let path_cache = PathCache::new(self.verbs(), transform, tess_tol, dist_tol);
+            let path_cache = PathCache::new(self.verbs(), tess_tol, dist_tol);
             *self.cache.borrow_mut() = Some((key, path_cache));
         }
 
-        RefMut::map(self.cache.borrow_mut(), |cache| &mut cache.as_mut().unwrap().1)
+        RefMut::map(self.cache.borrow_mut(), |cache| {
+            let cache = &mut cache.as_mut().unwrap().1;
+            cache.update(transform);
+            cache
+        })
     }
 
     // Path funcs
