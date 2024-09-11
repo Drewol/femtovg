@@ -1,9 +1,4 @@
-use std::{
-    hash::{Hash, Hasher},
-    ops::{Add, AddAssign, Div, DivAssign, Index, IndexMut, Mul, MulAssign, Neg, Sub, SubAssign},
-};
-
-use fnv::FnvHasher;
+use std::ops::{Add, AddAssign, Div, DivAssign, Index, IndexMut, Mul, MulAssign, Neg, Sub, SubAssign};
 
 #[derive(Copy, Clone, Debug, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -346,13 +341,7 @@ impl Transform2D {
 
     /// Generates a cache key for the current transformation matrix.
     pub fn cache_key(&self) -> u64 {
-        let mut hasher = FnvHasher::default();
-
-        for i in 0..6 {
-            self.0[i].to_bits().hash(&mut hasher);
-        }
-
-        hasher.finish()
+        (self.average_scale() * 100.0) as u64
     }
 }
 
