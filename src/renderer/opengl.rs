@@ -8,6 +8,7 @@ use glutin::display::GlDisplay;
 
 use fnv::FnvHashMap;
 use imgref::ImgVec;
+use puffin::{profile_function, profile_scope};
 use rgb::RGBA8;
 
 use crate::{
@@ -246,6 +247,7 @@ impl OpenGl {
     }
 
     fn convex_fill(&mut self, images: &ImageStore<GlTexture>, cmd: &Command, gpu_paint: &Params) {
+        profile_function!();
         self.set_uniforms(images, gpu_paint, cmd.image, cmd.glyph_texture);
 
         for drawable in &cmd.drawables {
@@ -273,6 +275,7 @@ impl OpenGl {
         stencil_paint: &Params,
         fill_paint: &Params,
     ) {
+        profile_function!();
         unsafe {
             self.context.enable(glow::STENCIL_TEST);
             self.context.stencil_mask(0xff);
@@ -349,6 +352,7 @@ impl OpenGl {
     }
 
     fn stroke(&mut self, images: &ImageStore<GlTexture>, cmd: &Command, paint: &Params) {
+        profile_function!();
         self.set_uniforms(images, paint, cmd.image, cmd.glyph_texture);
 
         for drawable in &cmd.drawables {
@@ -364,6 +368,7 @@ impl OpenGl {
     }
 
     fn stencil_stroke(&mut self, images: &ImageStore<GlTexture>, cmd: &Command, paint1: &Params, paint2: &Params) {
+        profile_function!();
         unsafe {
             self.context.enable(glow::STENCIL_TEST);
             self.context.stencil_mask(0xff);
@@ -426,6 +431,7 @@ impl OpenGl {
     }
 
     fn triangles(&mut self, images: &ImageStore<GlTexture>, cmd: &Command, paint: &Params) {
+        profile_function!();
         self.set_uniforms(images, paint, cmd.image, cmd.glyph_texture);
 
         if let Some((start, count)) = cmd.triangles_verts {
@@ -470,6 +476,7 @@ impl OpenGl {
     }
 
     fn clear_rect(&self, x: u32, y: u32, width: u32, height: u32, color: Color) {
+        profile_function!();
         unsafe {
             self.context.enable(glow::SCISSOR_TEST);
             self.context.scissor(
@@ -636,6 +643,7 @@ impl OpenGl {
     }
 
     fn main_program(&self) -> &MainProgram {
+        profile_function!();
         let programs = if self.current_program_needs_glyph_texture {
             &self.main_programs_with_glyph_texture
         } else {
@@ -692,10 +700,12 @@ impl Renderer for OpenGl {
     }
 
     fn render(&mut self, images: &mut ImageStore<Self::Image>, verts: &[Vertex], commands: Vec<Command>) {
+        profile_function!();
         self.current_program = 0;
         self.main_program().bind();
 
         unsafe {
+            profile_scope!("Render prepare");
             self.context.enable(glow::CULL_FACE);
 
             self.context.cull_face(glow::BACK);

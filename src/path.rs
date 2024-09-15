@@ -147,7 +147,8 @@ impl Path {
         }
 
         if needs_rebuild {
-            let path_cache = PathCache::new(self.verbs(), tess_tol, dist_tol);
+            let mut path_cache = PathCache::new(self.verbs(), tess_tol, dist_tol);
+            path_cache.update(transform);
             *self.cache.borrow_mut() = Some((key, path_cache));
         }
 

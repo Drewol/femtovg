@@ -321,6 +321,19 @@ impl Transform2D {
         (sx + sy) * 0.5
     }
 
+    pub fn is_scale_zero(&self) -> bool {
+        let sx = (self[0] * self[0] + self[2] * self[2]).sqrt();
+        let sy = (self[1] * self[1] + self[3] * self[3]).sqrt();
+
+        (sx * sy) < f32::EPSILON
+    }
+
+    pub fn min_scale(&self) -> f32 {
+        let sx = (self[0] * self[0] + self[2] * self[2]).sqrt();
+        let sy = (self[1] * self[1] + self[3] * self[3]).sqrt();
+        sx.min(sy)
+    }
+
     pub fn to_mat3x4(self) -> [f32; 12] {
         [
             self[0], self[1], 0.0, 0.0, self[2], self[3], 0.0, 0.0, self[4], self[5], 1.0, 0.0,
@@ -328,7 +341,7 @@ impl Transform2D {
     }
 
     pub fn cache_key(&self) -> u64 {
-        (self.average_scale() * 100.0) as u64
+        (self.min_scale() * 100.0).floor() as u64
     }
 }
 
