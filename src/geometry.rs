@@ -333,7 +333,22 @@ impl Transform2D {
         (sx + sy) * 0.5
     }
 
-    /// Converts the current transformation matrix to a 3×4 matrix format.
+    /// Calculates the average scale factor of the current transformation matrix.
+    pub fn is_scale_zero(&self) -> bool {
+        let sx = (self[0] * self[0] + self[2] * self[2]).sqrt();
+        let sy = (self[1] * self[1] + self[3] * self[3]).sqrt();
+
+        (sx * sy) < f32::EPSILON
+    }
+
+    /// Calculates the average scale factor of the current transformation matrix.
+    pub fn min_scale(&self) -> f32 {
+        let sx = (self[0] * self[0] + self[2] * self[2]).sqrt();
+        let sy = (self[1] * self[1] + self[3] * self[3]).sqrt();
+        sx.min(sy)
+    }
+
+    /// Calculates the average scale factor of the current transformation matrix.
     pub fn to_mat3x4(self) -> [f32; 12] {
         let Self([a, b, c, d, x, y]) = self;
         [a, b, 0.0, 0.0, c, d, 0.0, 0.0, x, y, 1.0, 0.0]
@@ -341,7 +356,7 @@ impl Transform2D {
 
     /// Generates a cache key for the current transformation matrix.
     pub fn cache_key(&self) -> u64 {
-        (self.average_scale() * 100.0) as u64
+        (self.min_scale() * 100.0).floor() as u64
     }
 }
 

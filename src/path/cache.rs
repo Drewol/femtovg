@@ -219,7 +219,7 @@ impl PathCache {
         self.contours.clone_from(&self.raw_contours);
         let dist_tol = self.dist_tol;
 
-        cache.contours.retain_mut(|contour| {
+        self.contours.retain_mut(|contour| {
             let mut points = &mut all_points[contour.point_range.clone()];
 
             // If the first and last points are the same, remove the last, mark as closed contour.

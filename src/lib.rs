@@ -842,6 +842,9 @@ where
     fn fill_path_internal(&mut self, path: &Path, paint_flavor: &PaintFlavor, anti_alias: bool, fill_rule: FillRule) {
         let mut paint_flavor = paint_flavor.clone();
         let transform = self.state().transform;
+        if transform.is_scale_zero() {
+            return;
+        }
 
         // The path cache saves a flattened and transformed version of the path.
         let mut path_cache = path.cache(&transform, self.tess_tol, self.dist_tol);
@@ -1012,6 +1015,9 @@ where
     ) {
         let mut paint_flavor = paint_flavor.clone();
         let transform = self.state().transform;
+        if transform.is_scale_zero() {
+            return;
+        }
 
         // The path cache saves a flattened and transformed version of the path.
         let mut path_cache = path.cache(&transform, self.tess_tol, self.dist_tol);
