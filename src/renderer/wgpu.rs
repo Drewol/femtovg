@@ -7,6 +7,8 @@ use rgb::bytemuck;
 use wgpu::util::DeviceExt;
 use wgpu::PipelineCompilationOptions;
 
+use puffin::{profile_function, profile_scope};
+
 use crate::image::ImageStore;
 use crate::paint::GlyphTexture;
 use crate::renderer::ShaderType;
@@ -292,6 +294,7 @@ impl Renderer for WGPURenderer {
     type Image = Image;
     type NativeTexture = wgpu::Texture;
     type Surface = wgpu::Texture;
+    type RenderOutput = wgpu::CommandBuffer;
 
     fn set_size(&mut self, _width: u32, _height: u32, _dpi: f32) {}
 
@@ -301,12 +304,12 @@ impl Renderer for WGPURenderer {
         images: &mut crate::image::ImageStore<Self::Image>,
         verts: &[super::Vertex],
         commands: Vec<super::Command>,
-    ) {
+    ) -> wgpu::CommandBuffer {
+        profile_function!(self.pipeline_cache.borrow().len().to_string());
         self.screen_view[0] = surface_texture.width() as f32;
         self.screen_view[1] = surface_texture.height() as f32;
 
         let texture_view = std::rc::Rc::new(surface_texture.create_view(&wgpu::TextureViewDescriptor::default()));
-
         let vertex_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Main Vertex Buffer"),
             contents: bytemuck::cast_slice(verts),
@@ -355,6 +358,8 @@ impl Renderer for WGPURenderer {
             vertex_buffer,
         );
 
+        render_pass_builder.recreate_render_pass(wgpu::LoadOp::Load);
+
         let mut pipeline_and_bindgroup_mapper = CommandToPipelineAndBindGroupMapper::new(
             self.device.clone(),
             self.empty_texture.clone(),
@@ -365,106 +370,104 @@ impl Renderer for WGPURenderer {
         );
 
         let mut current_render_target = RenderTarget::Screen;
-
-        for command in commands {
-            match command.cmd_type {
-                super::CommandType::SetRenderTarget(render_target) => {
-                    current_render_target = render_target;
-                    match render_target {
-                        RenderTarget::Screen => {
-                            render_pass_builder.set_render_target_screen();
-                        }
-                        RenderTarget::Image(image_id) => {
-                            render_pass_builder.set_render_target_image(images, image_id, wgpu::LoadOp::Load);
+        {
+            profile_scope!("Commands");
+            for command in commands {
+                match command.cmd_type {
+                    super::CommandType::SetRenderTarget(render_target) => {
+                        current_render_target = render_target;
+                        match render_target {
+                            RenderTarget::Screen => {
+                                render_pass_builder.set_render_target_screen();
+                            }
+                            RenderTarget::Image(image_id) => {
+                                render_pass_builder.set_render_target_image(images, image_id, wgpu::LoadOp::Load);
+                            }
                         }
                     }
-                }
-                super::CommandType::ClearRect { color } => {
-                    clear_rect(
-                        images,
-                        color,
-                        &command,
-                        &mut pipeline_and_bindgroup_mapper,
-                        &mut render_pass_builder,
-                    );
-                }
-                super::CommandType::ConvexFill { ref params } => {
-                    convex_fill(
-                        &command,
-                        &mut pipeline_and_bindgroup_mapper,
-                        &mut render_pass_builder,
-                        params,
-                        images,
-                    );
-                }
-                super::CommandType::ConcaveFill {
-                    ref stencil_params,
-                    ref fill_params,
-                } => {
-                    concave_fill(
-                        &command,
-                        &mut pipeline_and_bindgroup_mapper,
-                        &mut render_pass_builder,
-                        stencil_params,
-                        images,
-                        fill_params,
-                    );
-                }
-                super::CommandType::Stroke { params } => {
-                    stroke(
-                        &command,
-                        &mut pipeline_and_bindgroup_mapper,
-                        &mut render_pass_builder,
-                        params,
-                        images,
-                    );
-                }
-                super::CommandType::StencilStroke { params1, params2 } => {
-                    stencil_stroke(
-                        &command,
-                        &mut pipeline_and_bindgroup_mapper,
-                        &mut render_pass_builder,
-                        params2,
-                        images,
-                        params1,
-                    );
-                }
-                super::CommandType::Triangles { ref params } => {
-                    triangles(
-                        &command,
-                        &mut pipeline_and_bindgroup_mapper,
-                        &mut render_pass_builder,
-                        params,
-                        images,
-                    );
-                }
-                super::CommandType::RenderFilteredImage { target_image, filter } => match filter {
-                    crate::ImageFilter::GaussianBlur { sigma } => {
-                        gaussian_blur_filter(
-                            &self.device,
-                            &mut current_render_target,
+                    super::CommandType::ClearRect { color } => {
+                        clear_rect(
                             images,
-                            command,
-                            sigma,
-                            &mut render_pass_builder,
+                            color,
+                            &command,
                             &mut pipeline_and_bindgroup_mapper,
-                            target_image,
+                            &mut render_pass_builder,
                         );
                     }
-                },
+                    super::CommandType::ConvexFill { ref params } => {
+                        convex_fill(
+                            &command,
+                            &mut pipeline_and_bindgroup_mapper,
+                            &mut render_pass_builder,
+                            params,
+                            images,
+                        );
+                    }
+                    super::CommandType::ConcaveFill {
+                        ref stencil_params,
+                        ref fill_params,
+                    } => {
+                        concave_fill(
+                            &command,
+                            &mut pipeline_and_bindgroup_mapper,
+                            &mut render_pass_builder,
+                            stencil_params,
+                            images,
+                            fill_params,
+                        );
+                    }
+                    super::CommandType::Stroke { params } => {
+                        stroke(
+                            &command,
+                            &mut pipeline_and_bindgroup_mapper,
+                            &mut render_pass_builder,
+                            params,
+                            images,
+                        );
+                    }
+                    super::CommandType::StencilStroke { params1, params2 } => {
+                        stencil_stroke(
+                            &command,
+                            &mut pipeline_and_bindgroup_mapper,
+                            &mut render_pass_builder,
+                            params2,
+                            images,
+                            params1,
+                        );
+                    }
+                    super::CommandType::Triangles { ref params } => {
+                        triangles(
+                            &command,
+                            &mut pipeline_and_bindgroup_mapper,
+                            &mut render_pass_builder,
+                            params,
+                            images,
+                        );
+                    }
+                    super::CommandType::RenderFilteredImage { target_image, filter } => match filter {
+                        crate::ImageFilter::GaussianBlur { sigma } => {
+                            gaussian_blur_filter(
+                                &self.device,
+                                &mut current_render_target,
+                                images,
+                                command,
+                                sigma,
+                                &mut render_pass_builder,
+                                &mut pipeline_and_bindgroup_mapper,
+                                target_image,
+                            );
+                        }
+                    },
+                }
             }
         }
 
         drop(render_pass_builder);
-
-        self.queue.submit(Some(encoder.finish()));
-
-        self.pipeline_cache
-            .borrow_mut()
-            .retain(|_, cached_pipeline| std::mem::replace(&mut cached_pipeline.accessed, false));
+        encoder.finish()
     }
 
     fn alloc_image(&mut self, info: crate::ImageInfo) -> Result<Self::Image, crate::ErrorKind> {
+        profile_function!();
         Ok(Image {
             texture: Rc::new(self.device.create_texture(&wgpu::TextureDescriptor {
                 label: None,
@@ -495,6 +498,7 @@ impl Renderer for WGPURenderer {
         native_texture: Self::NativeTexture,
         info: crate::ImageInfo,
     ) -> Result<Self::Image, crate::ErrorKind> {
+        profile_function!();
         Ok(Image {
             texture: Rc::new(native_texture),
             info,
@@ -508,6 +512,7 @@ impl Renderer for WGPURenderer {
         x: usize,
         y: usize,
     ) -> Result<(), crate::ErrorKind> {
+        profile_function!();
         #[cfg(target_arch = "wasm32")]
         if let crate::ImageSource::HtmlImageElement(htmlimage) = data {
             self.queue.copy_external_image_to_texture(
@@ -711,6 +716,7 @@ fn triangles(
     params: &Params,
     images: &mut ImageStore<Image>,
 ) {
+    profile_function!();
     let Some((start, count)) = command.triangles_verts else {
         return;
     };
@@ -736,6 +742,7 @@ fn stencil_stroke(
     images: &mut ImageStore<Image>,
     params1: Params,
 ) {
+    profile_function!();
     if !command
         .drawables
         .iter()
@@ -868,6 +875,7 @@ fn stroke(
     params: Params,
     images: &mut ImageStore<Image>,
 ) {
+    profile_function!();
     for drawable in &command.drawables {
         let Some((start, count)) = drawable.stroke_verts else {
             continue;
@@ -895,6 +903,7 @@ fn concave_fill(
     images: &mut ImageStore<Image>,
     fill_params: &Params,
 ) {
+    profile_function!();
     if command.drawables.iter().any(|drawable| drawable.fill_verts.is_some()) {
         pipeline_and_bindgroup_mapper.update_renderpass(
             render_pass_builder,
@@ -1027,6 +1036,7 @@ fn convex_fill(
     params: &Params,
     images: &mut ImageStore<Image>,
 ) {
+    profile_function!();
     let blend_state = blend_state(command).into();
 
     for drawable in &command.drawables {
@@ -1069,6 +1079,7 @@ fn clear_rect(
     pipeline_and_bindgroup_mapper: &mut CommandToPipelineAndBindGroupMapper,
     render_pass_builder: &mut RenderPassBuilder<'_>,
 ) {
+    profile_function!();
     let mut params = Params::new(
         images,
         &Default::default(),
@@ -1184,6 +1195,7 @@ impl PipelineState {
         pipeline_layout: &wgpu::PipelineLayout,
         shader_module: &wgpu::ShaderModule,
     ) -> wgpu::RenderPipeline {
+        profile_function!();
         let constants = HashMap::from([
             ("shader_type".to_string(), self.shader_type.to_f32() as f64),
             (
@@ -1269,6 +1281,7 @@ impl BindGroupState {
         bind_group_layout: &wgpu::BindGroupLayout,
         empty_texture: &Rc<wgpu::Texture>,
     ) -> wgpu::BindGroup {
+        profile_function!();
         let uniform_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Fragment Uniform Buffer"),
             contents: bytemuck::cast_slice(self.uniforms.as_slice()),
@@ -1345,6 +1358,7 @@ impl<'a> RenderPassBuilder<'a> {
         stencil_buffer: Rc<wgpu::Texture>,
         vertex_buffer: wgpu::Buffer,
     ) -> Self {
+        profile_function!();
         let viewport_bind_group = Self::create_viewport_bind_group(&device, &screen_view, &viewport_bind_group_layout);
         Self {
             device: device.clone(),
@@ -1382,6 +1396,7 @@ impl<'a> RenderPassBuilder<'a> {
         viewport_bind_group_layout: &wgpu::BindGroupLayout,
     ) -> wgpu::BindGroup {
         // WebGL requires 16 byte alignment for uniforms, so pad accordingly.
+        profile_function!();
         let viewport_padded: [f32; 4] = [viewport[0], viewport[1], 0.0, 0.0];
 
         let view_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -1408,6 +1423,7 @@ impl<'a> RenderPassBuilder<'a> {
         image: Option<&ImageOrTexture>,
         empty_texture: &Rc<wgpu::Texture>,
     ) -> (wgpu::TextureView, wgpu::Sampler) {
+        profile_function!();
         let texture_and_flags = image.and_then(|image_or_texture| match image_or_texture {
             ImageOrTexture::Image(image_id) => images.get(*image_id).map(|img| (img.texture.clone(), img.info.flags())),
             ImageOrTexture::Texture(texture) => Some((texture.clone(), crate::ImageFlags::empty())),
@@ -1451,6 +1467,7 @@ impl<'a> RenderPassBuilder<'a> {
         stencil_buffer: Option<Rc<wgpu::Texture>>,
         load: wgpu::LoadOp<wgpu::Color>,
     ) {
+        profile_function!();
         self.texture_view = std::rc::Rc::new(texture.create_view(&Default::default()));
         self.set_viewport([texture.width() as f32, texture.height() as f32]);
         self.stencil_buffer = stencil_buffer;
@@ -1466,6 +1483,7 @@ impl<'a> RenderPassBuilder<'a> {
         image_id: ImageId,
         load: wgpu::LoadOp<wgpu::Color>,
     ) {
+        profile_function!();
         let image = images.get(image_id).unwrap();
 
         let stencil_buffer = self
@@ -1493,6 +1511,7 @@ impl<'a> RenderPassBuilder<'a> {
     }
 
     fn set_render_target_screen(&mut self) {
+        profile_function!();
         self.texture_view = self.surface_view.clone();
         self.stencil_buffer = Some(self.screen_stencil_buffer.clone());
         self.set_viewport(self.screen_view);
@@ -1503,6 +1522,7 @@ impl<'a> RenderPassBuilder<'a> {
     }
 
     fn recreate_render_pass(&mut self, load: wgpu::LoadOp<wgpu::Color>) {
+        profile_function!();
         drop(self.rpass.take());
         let stencil_view = self
             .stencil_buffer
@@ -1540,6 +1560,7 @@ impl<'a> RenderPassBuilder<'a> {
     }
 
     fn draw(&mut self, vertices: std::ops::Range<u32>) {
+        profile_function!();
         self.rpass.as_mut().unwrap().draw(vertices, 0..1);
     }
 }

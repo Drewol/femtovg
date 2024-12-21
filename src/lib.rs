@@ -418,19 +418,24 @@ where
     /// Tells the renderer to execute all drawing commands and clears the current internal state
     ///
     /// Call this at the end of each frame.
-    pub fn flush_to_surface(&mut self, surface: &T::Surface) {
-        self.renderer.render(
-            surface,
-            &mut self.images,
-            &self.verts,
-            std::mem::take(&mut self.commands),
-        );
+    pub fn flush_to_surface(&mut self, surface: &T::Surface) -> Option<T::RenderOutput> {
+        let res = if !self.verts.is_empty() {
+            Some(self.renderer.render(
+                surface,
+                &mut self.images,
+                &self.verts,
+                std::mem::take(&mut self.commands),
+            ))
+        } else {
+            None
+        };
         self.verts.clear();
         self.gradients
             .release_old_gradients(&mut self.images, &mut self.renderer);
         if let Some(atlas) = self.ephemeral_glyph_atlas.take() {
             atlas.clear(self);
         }
+        res
     }
 
     /// Returns a screenshot of the current canvas.
@@ -1542,6 +1547,7 @@ impl Renderer for RecordingRenderer {
     type Image = DummyImage;
     type NativeTexture = ();
     type Surface = ();
+    type RenderOutput = ();
 
     fn set_size(&mut self, _width: u32, _height: u32, _dpi: f32) {}
 
